@@ -744,14 +744,18 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			goto err;
 
 		if (qp_has_rq(init_attr)) {
-			err = mlx4_db_alloc(dev->dev, &qp->db, 0);
+			err = mlx4_db_alloc(dev->dev, &qp->db, 0,
+					init_attr->create_flags &
+						IB_QP_CREATE_USE_GFP_NOFS);
 			if (err)
 				goto err;
 
 			*qp->db.db = 0;
 		}
 
-		if (mlx4_buf_alloc(dev->dev, qp->buf_size, PAGE_SIZE * 2, &qp->buf)) {
+		if (mlx4_buf_alloc(dev->dev, qp->buf_size, PAGE_SIZE * 2, &qp->buf,
+					init_attr->create_flags &
+						IB_QP_CREATE_USE_GFP_NOFS)) {
 			err = -ENOMEM;
 			goto err_db;
 		}
@@ -761,12 +765,20 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		if (err)
 			goto err_buf;
 
-		err = mlx4_buf_write_mtt(dev->dev, &qp->mtt, &qp->buf);
+		err = mlx4_buf_write_mtt(dev->dev, &qp->mtt, &qp->buf,
+				init_attr->create_flags &
+					IB_QP_CREATE_USE_GFP_NOFS);
 		if (err)
 			goto err_mtt;
 
-		qp->sq.wrid  = kmalloc(qp->sq.wqe_cnt * sizeof (u64), GFP_KERNEL);
-		qp->rq.wrid  = kmalloc(qp->rq.wqe_cnt * sizeof (u64), GFP_KERNEL);
+		qp->sq.wrid  = kmalloc(qp->sq.wqe_cnt * sizeof (u64),
+					init_attr->create_flags &
+						IB_QP_CREATE_USE_GFP_NOFS ?
+							GFP_NOFS : GFP_KERNEL);
+		qp->rq.wrid  = kmalloc(qp->rq.wqe_cnt * sizeof (u64),
+					init_attr->create_flags &
+						IB_QP_CREATE_USE_GFP_NOFS ?
+							GFP_NOFS : GFP_KERNEL);
 
 		if (!qp->sq.wrid || !qp->rq.wrid) {
 			err = -ENOMEM;
@@ -797,7 +809,8 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			goto err_proxy;
 	}
 
-	err = mlx4_qp_alloc(dev->dev, qpn, &qp->mqp);
+	err = mlx4_qp_alloc(dev->dev, qpn, &qp->mqp,
+			init_attr->create_flags & IB_QP_CREATE_USE_GFP_NOFS);
 	if (err)
 		goto err_qpn;
 
@@ -1024,10 +1037,12 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 					MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK |
 					MLX4_IB_SRIOV_TUNNEL_QP |
 					MLX4_IB_SRIOV_SQP |
-					MLX4_IB_QP_NETIF))
+					MLX4_IB_QP_NETIF |
+					IB_QP_CREATE_USE_GFP_NOFS))
 		return ERR_PTR(-EINVAL);
 
-	if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
+	if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP &&
+	    init_attr->create_flags & ~IB_QP_CREATE_USE_GFP_NOFS) {
 		if (init_attr->qp_type != IB_QPT_UD)
 			return ERR_PTR(-EINVAL);
 	}
@@ -1054,7 +1069,10 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	case IB_QPT_RC:
 	case IB_QPT_UC:
 	case IB_QPT_RAW_PACKET:
-		qp = kzalloc(sizeof *qp, GFP_KERNEL);
+		qp = kzalloc(sizeof *qp,
+				init_attr->create_flags &
+				IB_QP_CREATE_USE_GFP_NOFS ?
+					GFP_NOFS : GFP_KERNEL);
 		if (!qp)
 			return ERR_PTR(-ENOMEM);
 		/* fall through */
