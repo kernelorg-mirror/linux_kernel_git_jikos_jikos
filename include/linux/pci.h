@@ -341,6 +341,7 @@ struct pci_dev {
 #ifdef CONFIG_PCI_MSI
 	struct list_head msi_list;
 	struct kset *msi_kset;
+	unsigned int	broken_msi_disable:1;
 #endif
 	struct pci_vpd *vpd;
 #ifdef CONFIG_PCI_ATS
