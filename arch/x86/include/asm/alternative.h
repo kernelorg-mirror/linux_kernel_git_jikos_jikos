@@ -5,6 +5,7 @@
 #include <linux/stddef.h>
 #include <linux/stringify.h>
 #include <asm/asm.h>
+#include <asm/ptrace.h>
 
 /*
  * Alternative inline assembly for SMP.
@@ -232,6 +233,7 @@ struct text_poke_param {
 	size_t len;
 };
 
+extern int poke_int3_handler(struct pt_regs *regs);
 extern void *text_poke(void *addr, const void *opcode, size_t len);
 extern void *text_poke_bp(void *addr, const void *opcode, size_t len, void *handler);
 extern void *text_poke_smp(void *addr, const void *opcode, size_t len);
