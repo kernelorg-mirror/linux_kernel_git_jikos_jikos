@@ -1,0 +1,7 @@
+config HAVE_KGR
+	bool
+
+config KGR
+	bool "Kgr infrastructure"
+	depends on DYNAMIC_FTRACE_WITH_REGS
+	depends on HAVE_KGR
