@@ -1333,7 +1333,7 @@ int hid_report_raw_event(struct hid_device *hid, int type, u8 *data, int size,
 		csize--;
 	}
 
-	rsize = ((report->size - 1) >> 3) + 1;
+	rsize = ((report->size - 1) >> 3) + 1 + (report->id > 0) + 7;
 
 	if (rsize > HID_MAX_BUFFER_SIZE)
 		rsize = HID_MAX_BUFFER_SIZE;
