@@ -42,11 +42,7 @@ static bool kgr_still_patching(void)
 
 	read_lock(&tasklist_lock);
 	for_each_process(p) {
-		/*
-		 * TODO
-		 *   kernel thread codepaths not supported and silently ignored
-		 */
-		if (task_thread_info(p)->kgr_in_progress && p->mm) {
+		if (task_thread_info(p)->kgr_in_progress) {
 			pr_info("pid %d (%s) still in kernel after timeout\n",
 					p->pid, p->comm);
 			failed = true;
@@ -94,13 +90,23 @@ static void kgr_work_fn(struct work_struct *work)
 	mutex_unlock(&kgr_in_progress_lock);
 }
 
-static void kgr_mark_processes(void)
+static void kgr_handle_processes(void)
 {
 	struct task_struct *p;
 
 	read_lock(&tasklist_lock);
-	for_each_process(p)
+	for_each_process(p) {
 		task_thread_info(p)->kgr_in_progress = true;
+
+		/* wake up kthreads, they will clean the progress flag */
+		if (!p->mm) {
+			/*
+			 * this is incorrect for kthreads waiting still for
+			 * their first wake_up.
+			 */
+			wake_up_process(p);
+		}
+	}
 	read_unlock(&tasklist_lock);
 }
 
@@ -237,8 +243,7 @@ static int kgr_patch_code(const struct kgr_patch_fun *patch_fun, bool final)
  * kgr_start_patching -- the entry for a kgraft patch
  * @patch: patch to be applied
  *
- * Start patching of code that is neither running in IRQ context nor
- * kernel thread.
+ * Start patching of code that is not running in IRQ context.
  */
 int kgr_start_patching(const struct kgr_patch *patch)
 {
@@ -276,7 +281,7 @@ int kgr_start_patching(const struct kgr_patch *patch)
 	kgr_patch = patch;
 	mutex_unlock(&kgr_in_progress_lock);
 
-	kgr_mark_processes();
+	kgr_handle_processes();
 
 	/*
 	 * give everyone time to exit kernel, and check after a while

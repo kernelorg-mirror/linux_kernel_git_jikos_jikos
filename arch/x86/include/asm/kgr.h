@@ -13,7 +13,7 @@ static void _new_function ##_stub_slow (unsigned long ip, unsigned long parent_i
 {									\
 	struct kgr_loc_caches *c = ops->private;			\
 									\
-	if (task_thread_info(current)->kgr_in_progress && current->mm) {\
+	if (task_thread_info(current)->kgr_in_progress) {		\
 		pr_info("kgr: slow stub: calling old code at %lx\n",	\
 				c->old);				\
 		regs->ip = c->old + MCOUNT_INSN_SIZE;			\
