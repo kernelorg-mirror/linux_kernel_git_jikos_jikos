@@ -2369,6 +2369,7 @@ sleep:
 	__set_current_state(TASK_INTERRUPTIBLE);
 	spin_unlock_irq(&pool->lock);
 	schedule();
+	kgr_task_safe(current);
 	goto woke_up;
 }
 

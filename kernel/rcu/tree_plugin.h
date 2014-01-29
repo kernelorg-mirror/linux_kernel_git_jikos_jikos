@@ -27,6 +27,7 @@
 #include <linux/delay.h>
 #include <linux/gfp.h>
 #include <linux/oom.h>
+#include <linux/sched.h>
 #include <linux/smpboot.h>
 #include "../time/tick-internal.h"
 
@@ -1273,7 +1274,8 @@ static int rcu_boost_kthread(void *arg)
 	for (;;) {
 		rnp->boost_kthread_status = RCU_KTHREAD_WAITING;
 		trace_rcu_utilization(TPS("End boost kthread@rcu_wait"));
-		rcu_wait(rnp->boost_tasks || rnp->exp_tasks);
+		rcu_wait(({ kgr_task_safe(current);
+					rnp->boost_tasks || rnp->exp_tasks; }));
 		trace_rcu_utilization(TPS("Start boost kthread@rcu_wait"));
 		rnp->boost_kthread_status = RCU_KTHREAD_RUNNING;
 		more2boost = rcu_boost(rnp);
@@ -2283,11 +2285,14 @@ static int rcu_nocb_kthread(void *arg)
 
 	/* Each pass through this loop invokes one batch of callbacks */
 	for (;;) {
+		kgr_task_safe(current);
 		/* If not polling, wait for next batch of callbacks. */
 		if (!rcu_nocb_poll) {
 			trace_rcu_nocb_wake(rdp->rsp->name, rdp->cpu,
 					    TPS("Sleep"));
-			wait_event_interruptible(rdp->nocb_wq, rdp->nocb_head);
+			wait_event_interruptible(rdp->nocb_wq, ({
+						kgr_task_safe(current);
+						rdp->nocb_head; }));
 			/* Memory barrier provide by xchg() below. */
 		} else if (firsttime) {
 			firsttime = 0;
