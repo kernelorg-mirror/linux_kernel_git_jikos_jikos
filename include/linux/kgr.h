@@ -11,7 +11,7 @@
 #define KGR_TIMEOUT 30
 
 struct kgr_patch {
-	char reserved;
+	bool __percpu *irq_use_new;
 	const struct kgr_patch_fun {
 		const char *name;
 		const char *new_name;
@@ -29,6 +29,7 @@ struct kgr_patch {
 struct kgr_loc_caches {
 	unsigned long old;
 	unsigned long new;
+	bool __percpu *irq_use_new;
 };
 
 #define KGR_PATCHED_FUNCTION(patch, _name, _new_function)			\
@@ -57,7 +58,7 @@ struct kgr_loc_caches {
 #define KGR_PATCH(name)		&__kgr_patch_ ## name
 #define KGR_PATCH_END		NULL
 
-extern int kgr_start_patching(const struct kgr_patch *);
+extern int kgr_start_patching(struct kgr_patch *);
 #endif /* IS_ENABLED(CONFIG_KGR) */
 
 #endif /* LINUX_KGR_H */

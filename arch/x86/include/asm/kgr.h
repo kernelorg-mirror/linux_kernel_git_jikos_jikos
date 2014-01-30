@@ -12,8 +12,10 @@ static void _new_function ##_stub_slow (unsigned long ip, unsigned long parent_i
 		struct ftrace_ops *ops, struct pt_regs *regs)		\
 {									\
 	struct kgr_loc_caches *c = ops->private;			\
+	bool irq = !!in_interrupt();					\
 									\
-	if (task_thread_info(current)->kgr_in_progress) {		\
+	if ((!irq && task_thread_info(current)->kgr_in_progress) ||	\
+			(irq && !*this_cpu_ptr(c->irq_use_new))) {	\
 		pr_info("kgr: slow stub: calling old code at %lx\n",	\
 				c->old);				\
 		regs->ip = c->old + MCOUNT_INSN_SIZE;			\

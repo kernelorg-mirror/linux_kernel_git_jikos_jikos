@@ -68,7 +68,7 @@ static bool new_capable(int cap)
 }
 KGR_PATCHED_FUNCTION(patch, capable, new_capable);
 
-static const struct kgr_patch patch = {
+static struct kgr_patch patch = {
 	.patches = {
 		KGR_PATCH(SyS_iopl),
 		KGR_PATCH(capable),

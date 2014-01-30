@@ -18,6 +18,7 @@
 #include <linux/kallsyms.h>
 #include <linux/kgr.h>
 #include <linux/module.h>
+#include <linux/percpu.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
@@ -25,7 +26,8 @@
 #include <linux/types.h>
 #include <linux/workqueue.h>
 
-static int kgr_patch_code(const struct kgr_patch_fun *patch_fun, bool final);
+static int kgr_patch_code(const struct kgr_patch *patch,
+		const struct kgr_patch_fun *patch_fun, bool final);
 static void kgr_work_fn(struct work_struct *work);
 
 static struct workqueue_struct *kgr_wq;
@@ -57,7 +59,7 @@ static void kgr_finalize(void)
 	const struct kgr_patch_fun *const *patch_fun;
 
 	for (patch_fun = kgr_patch->patches; *patch_fun; patch_fun++) {
-		int ret = kgr_patch_code(*patch_fun, true);
+		int ret = kgr_patch_code(kgr_patch, *patch_fun, true);
 		/*
 		 * In case any of the symbol resolutions in the set
 		 * has failed, patch all the previously replaced fentry
@@ -67,6 +69,7 @@ static void kgr_finalize(void)
 			pr_err("kgr: finalize for %s failed, trying to continue\n",
 					(*patch_fun)->name);
 	}
+	free_percpu(kgr_patch->irq_use_new);
 }
 
 static void kgr_work_fn(struct work_struct *work)
@@ -139,6 +142,20 @@ static unsigned long kgr_get_fentry_loc(const char *f_name)
 	return fentry_loc;
 }
 
+static void kgr_handle_irq_cpu(struct work_struct *work)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	*this_cpu_ptr(kgr_patch->irq_use_new) = true;
+	local_irq_restore(flags);
+}
+
+static void kgr_handle_irqs(void)
+{
+	schedule_on_each_cpu(kgr_handle_irq_cpu);
+}
+
 static int kgr_init_ftrace_ops(const struct kgr_patch_fun *patch_fun)
 {
 	struct kgr_loc_caches *caches;
@@ -184,7 +201,8 @@ static int kgr_init_ftrace_ops(const struct kgr_patch_fun *patch_fun)
 	return 0;
 }
 
-static int kgr_patch_code(const struct kgr_patch_fun *patch_fun, bool final)
+static int kgr_patch_code(const struct kgr_patch *patch,
+		const struct kgr_patch_fun *patch_fun, bool final)
 {
 	struct ftrace_ops *new_ops;
 	struct kgr_loc_caches *caches;
@@ -205,6 +223,7 @@ static int kgr_patch_code(const struct kgr_patch_fun *patch_fun, bool final)
 
 	/* Flip the switch */
 	caches = new_ops->private;
+	caches->irq_use_new = patch->irq_use_new;
 	fentry_loc = caches->old;
 	err = ftrace_set_filter_ip(new_ops, fentry_loc, 0, 0);
 	if (err) {
@@ -243,15 +262,21 @@ static int kgr_patch_code(const struct kgr_patch_fun *patch_fun, bool final)
  * kgr_start_patching -- the entry for a kgraft patch
  * @patch: patch to be applied
  *
- * Start patching of code that is not running in IRQ context.
+ * Start patching of code.
  */
-int kgr_start_patching(const struct kgr_patch *patch)
+int kgr_start_patching(struct kgr_patch *patch)
 {
 	const struct kgr_patch_fun *const *patch_fun;
 
 	if (!kgr_initialized) {
 		pr_err("kgr: can't patch, not initialized\n");
 		return -EINVAL;
+	}
+
+	patch->irq_use_new = alloc_percpu(bool);
+	if (!patch->irq_use_new) {
+		pr_err("kgr: can't patch, cannot allocate percpu data\n");
+		return -ENOMEM;
 	}
 
 	mutex_lock(&kgr_in_progress_lock);
@@ -264,7 +289,7 @@ int kgr_start_patching(const struct kgr_patch *patch)
 	for (patch_fun = patch->patches; *patch_fun; patch_fun++) {
 		int ret;
 
-		ret = kgr_patch_code(*patch_fun, false);
+		ret = kgr_patch_code(patch, *patch_fun, false);
 		/*
 		 * In case any of the symbol resolutions in the set
 		 * has failed, patch all the previously replaced fentry
@@ -281,6 +306,7 @@ int kgr_start_patching(const struct kgr_patch *patch)
 	kgr_patch = patch;
 	mutex_unlock(&kgr_in_progress_lock);
 
+	kgr_handle_irqs();
 	kgr_handle_processes();
 
 	/*
