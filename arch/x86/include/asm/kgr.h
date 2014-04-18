@@ -18,7 +18,7 @@ static void _new_function ##_stub_slow (unsigned long ip, unsigned long parent_i
 	struct kgr_loc_caches *c = ops->private;			\
 	bool irq = !!in_interrupt();					\
 									\
-	if ((!irq && task_thread_info(current)->kgr_in_progress) ||	\
+	if ((!irq && kgr_task_in_progress(current)) ||			\
 			(irq && !*this_cpu_ptr(c->irq_use_new))) {	\
 		pr_info("kgr: slow stub: calling old code at %lx\n",	\
 				c->old);				\

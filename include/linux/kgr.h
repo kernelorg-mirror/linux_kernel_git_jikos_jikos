@@ -6,6 +6,9 @@
 
 #if IS_ENABLED(CONFIG_KGR)
 
+static void kgr_mark_task_in_progress(struct task_struct *p);
+static bool kgr_task_in_progress(struct task_struct *p);
+
 #include <asm/kgr.h>
 
 #define KGR_TIMEOUT 30
@@ -59,6 +62,17 @@ struct kgr_loc_caches {
 #define KGR_PATCH_END		NULL
 
 extern int kgr_start_patching(struct kgr_patch *);
+
+static inline void kgr_mark_task_in_progress(struct task_struct *p)
+{
+	set_tsk_thread_flag(p, TIF_KGR_IN_PROGRESS);
+}
+
+static inline bool kgr_task_in_progress(struct task_struct *p)
+{
+	return test_tsk_thread_flag(p, TIF_KGR_IN_PROGRESS);
+}
+
 #endif /* IS_ENABLED(CONFIG_KGR) */
 
 #endif /* LINUX_KGR_H */

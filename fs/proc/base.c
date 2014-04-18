@@ -87,6 +87,7 @@
 #include <linux/slab.h>
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
+#include <linux/kgr.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -2109,7 +2110,7 @@ static const struct file_operations proc_timers_operations = {
 #if IS_ENABLED(CONFIG_KGR)
 static int proc_pid_kgr_in_progress(struct task_struct *task, char *buffer)
 {
-	return sprintf(buffer, "%d\n", task_thread_info(task)->kgr_in_progress);
+	return sprintf(buffer, "%d\n", kgr_task_in_progress(task));
 }
 #endif /* IS_ENABLED(CONFIG_KGR) */
 

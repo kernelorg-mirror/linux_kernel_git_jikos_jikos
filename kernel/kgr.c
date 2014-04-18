@@ -44,7 +44,7 @@ static bool kgr_still_patching(void)
 
 	read_lock(&tasklist_lock);
 	for_each_process(p) {
-		if (task_thread_info(p)->kgr_in_progress) {
+		if (kgr_task_in_progress(p)) {
 			failed = true;
 			break;
 		}
@@ -98,7 +98,7 @@ static void kgr_handle_processes(void)
 
 	read_lock(&tasklist_lock);
 	for_each_process(p) {
-		task_thread_info(p)->kgr_in_progress = true;
+		kgr_mark_task_in_progress(p);
 
 		/* wake up kthreads, they will clean the progress flag */
 		if (!p->mm) {

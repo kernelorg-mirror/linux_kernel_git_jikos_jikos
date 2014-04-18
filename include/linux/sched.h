@@ -2972,7 +2972,7 @@ static inline void mm_init_owner(struct mm_struct *mm, struct task_struct *p)
 #if IS_ENABLED(CONFIG_KGR)
 static inline void kgr_task_safe(struct task_struct *p)
 {
-	task_thread_info(p)->kgr_in_progress = false;
+	clear_tsk_thread_flag(p, TIF_KGR_IN_PROGRESS);
 }
 #else
 static inline void kgr_task_safe(struct task_struct *p) { }
