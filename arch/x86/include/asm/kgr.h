@@ -1,6 +1,10 @@
 #ifndef ASM_KGR_H
 #define ASM_KGR_H
 
+#ifndef CC_USING_FENTRY
+#error Your compiler has to support -mfentry for kGraft to work on x86
+#endif
+
 #include <linux/linkage.h>
 
 /*
