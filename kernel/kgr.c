@@ -45,9 +45,8 @@ static bool kgr_still_patching(void)
 	read_lock(&tasklist_lock);
 	for_each_process(p) {
 		if (task_thread_info(p)->kgr_in_progress) {
-			pr_info("pid %d (%s) still in kernel after timeout\n",
-					p->pid, p->comm);
 			failed = true;
+			break;
 		}
 	}
 	read_unlock(&tasklist_lock);
