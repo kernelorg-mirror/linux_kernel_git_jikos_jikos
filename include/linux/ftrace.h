@@ -144,6 +144,8 @@ enum ftrace_tracing_type_t {
 /* Current tracing type, default is FTRACE_TYPE_ENTER */
 extern enum ftrace_tracing_type_t ftrace_tracing_type;
 
+extern int ftrace_is_dead(void);
+
 /**
  * ftrace_stop - stop function tracer.
  *
@@ -245,6 +247,7 @@ static inline int ftrace_nr_registered_ops(void)
 	return 0;
 }
 static inline void clear_ftrace_function(void) { }
+static inline int ftrace_is_dead(void) { return 0; }
 static inline void ftrace_kill(void) { }
 static inline void ftrace_stop(void) { }
 static inline void ftrace_start(void) { }
