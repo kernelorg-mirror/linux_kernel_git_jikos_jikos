@@ -488,7 +488,12 @@ void kfree(const void *block)
 	struct page *sp;
 
 	trace_kfree(_RET_IP_, block);
-
+#ifdef CONFIG_DEBUG_SLAB
+	if (unlikely(IS_ERR(block))) {
+		WARN(1, "trying to free ERR_PTR\n");
+		return;
+	}
+#endif
 	if (unlikely(ZERO_OR_NULL_PTR(block)))
 		return;
 	kmemleak_free(block);

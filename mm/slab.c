@@ -3612,6 +3612,12 @@ void kfree(const void *objp)
 
 	trace_kfree(_RET_IP_, objp);
 
+#ifdef CONFIG_DEBUG_SLAB
+	if (unlikely(IS_ERR(objp))) {
+			WARN(1, "trying to free ERR_PTR\n");
+			return;
+	}
+#endif
 	if (unlikely(ZERO_OR_NULL_PTR(objp)))
 		return;
 	local_irq_save(flags);

@@ -3337,7 +3337,12 @@ void kfree(const void *x)
 	void *object = (void *)x;
 
 	trace_kfree(_RET_IP_, x);
-
+#ifdef CONFIG_DEBUG_SLAB
+	if (unlikely(IS_ERR(x))) {
+		WARN(1, "trying to free ERR_PTR\n");
+		return;
+	}
+#endif
 	if (unlikely(ZERO_OR_NULL_PTR(x)))
 		return;
 
