@@ -244,6 +244,11 @@ static inline int ftrace_function_local_disabled(struct ftrace_ops *ops)
 extern void ftrace_stub(unsigned long a0, unsigned long a1,
 			struct ftrace_ops *op, struct pt_regs *regs);
 
+#ifndef ftrace_ipmodify_supported
+/* let's not make any implicit assumptions about profiling call placement */
+# define ftrace_ipmodify_supported 0
+
+#endif
 #else /* !CONFIG_FUNCTION_TRACER */
 /*
  * (un)register_ftrace_function must be a macro since the ops parameter

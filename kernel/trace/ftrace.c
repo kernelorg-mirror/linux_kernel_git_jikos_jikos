@@ -1378,6 +1378,11 @@ ftrace_hash_move(struct ftrace_ops *ops, int enable,
 	if (ops->flags & FTRACE_OPS_FL_IPMODIFY && !enable)
 		return -EINVAL;
 
+	if ((ops->flags & FTRACE_OPS_FL_IPMODIFY) && !ftrace_ipmodify_supported) {
+		WARN(1, "Your compiler doesn't support features necessary for IPMODIFY");
+		return -ENOTSUPP;
+	}
+
 	/*
 	 * If the new source is empty, just free dst and assign it
 	 * the empty_hash.

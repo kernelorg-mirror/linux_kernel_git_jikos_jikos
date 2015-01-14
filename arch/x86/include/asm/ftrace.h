@@ -4,8 +4,10 @@
 #ifdef CONFIG_FUNCTION_TRACER
 #ifdef CC_USING_FENTRY
 # define MCOUNT_ADDR		((long)(__fentry__))
+# define ftrace_ipmodify_supported 1
 #else
 # define MCOUNT_ADDR		((long)(mcount))
+# define ftrace_ipmodify_supported 0
 #endif
 #define MCOUNT_INSN_SIZE	5 /* sizeof mcount call */
 
