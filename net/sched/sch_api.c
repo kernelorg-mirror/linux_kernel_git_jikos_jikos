@@ -29,6 +29,7 @@
 #include <linux/hrtimer.h>
 #include <linux/lockdep.h>
 #include <linux/slab.h>
+#include <linux/hashtable.h>
 
 #include <net/net_namespace.h>
 #include <net/sock.h>
@@ -265,7 +266,7 @@ static struct Qdisc *qdisc_match_from_root(struct Qdisc *root, u32 handle)
 	    root->handle == handle)
 		return root;
 
-	list_for_each_entry_rcu(q, &root->list, list) {
+	hash_for_each_possible_rcu(qdisc_dev(root)->qdisc_hash, q, hash, handle) {
 		if (q->handle == handle)
 			return q;
 	}
@@ -279,7 +280,7 @@ void qdisc_list_add(struct Qdisc *q)
 
 		WARN_ON_ONCE(root == &noop_qdisc);
 		ASSERT_RTNL();
-		list_add_tail_rcu(&q->list, &root->list);
+		hash_add_rcu(qdisc_dev(q)->qdisc_hash, &q->hash, q->handle);
 	}
 }
 EXPORT_SYMBOL(qdisc_list_add);
@@ -288,7 +289,7 @@ void qdisc_list_del(struct Qdisc *q)
 {
 	if ((q->parent != TC_H_ROOT) && !(q->flags & TCQ_F_INGRESS)) {
 		ASSERT_RTNL();
-		list_del_rcu(&q->list);
+		hash_del_rcu(&q->hash);
 	}
 }
 EXPORT_SYMBOL(qdisc_list_del);
@@ -1440,6 +1441,7 @@ static int tc_dump_qdisc_root(struct Qdisc *root, struct sk_buff *skb,
 {
 	int ret = 0, q_idx = *q_idx_p;
 	struct Qdisc *q;
+	int b;
 
 	if (!root)
 		return 0;
@@ -1454,7 +1456,7 @@ static int tc_dump_qdisc_root(struct Qdisc *root, struct sk_buff *skb,
 			goto done;
 		q_idx++;
 	}
-	list_for_each_entry(q, &root->list, list) {
+	hash_for_each(qdisc_dev(root)->qdisc_hash, b, q, hash) {
 		if (q_idx < s_q_idx) {
 			q_idx++;
 			continue;
@@ -1771,6 +1773,7 @@ static int tc_dump_tclass_root(struct Qdisc *root, struct sk_buff *skb,
 			       int *t_p, int s_t)
 {
 	struct Qdisc *q;
+	int b;
 
 	if (!root)
 		return 0;
@@ -1778,7 +1781,7 @@ static int tc_dump_tclass_root(struct Qdisc *root, struct sk_buff *skb,
 	if (tc_dump_tclass_qdisc(root, skb, tcm, cb, t_p, s_t) < 0)
 		return -1;
 
-	list_for_each_entry(q, &root->list, list) {
+	hash_for_each_rcu(qdisc_dev(root)->qdisc_hash, b, q, hash) {
 		if (tc_dump_tclass_qdisc(q, skb, tcm, cb, t_p, s_t) < 0)
 			return -1;
 	}
