@@ -639,6 +639,52 @@ out_unlock:
 	return -EBADF;
 }
 
+static int find_next_open_fd(struct fdtable *fdt, unsigned int from, unsigned int maxfd)
+{
+	unsigned int maxbit = maxfd / BITS_PER_LONG;
+	unsigned int bitbit = from / BITS_PER_LONG;
+
+	bitbit = find_next_bit(fdt->full_fds_bits, maxbit, bitbit) * BITS_PER_LONG;
+	if (bitbit > maxfd)
+		return maxfd;
+	if (bitbit > from)
+		from = bitbit;
+	return find_next_bit(fdt->open_fds, maxfd, from);
+}
+
+int __close_fds(struct files_struct *files, unsigned int from, unsigned int to)
+{
+	struct file *file;
+	struct fdtable *fdt;
+	int fd;
+
+	spin_lock(&files->file_lock);
+	fdt = files_fdtable(files);
+	if (from >= fdt->max_fds)
+		goto out;
+	if (to > fdt->max_fds)
+		to = fdt->max_fds;
+
+	for (fd = from; fd <= to; fd = find_next_open_fd(fdt, fd, to)) {
+		file = fdt->fd[fd];
+		if (!file)
+			continue;
+		rcu_assign_pointer(fdt->fd[fd], NULL);
+		__put_unused_fd(files, fd);
+		spin_unlock(&files->file_lock);
+		filp_close(file, files);
+		spin_lock(&files->file_lock);
+		/*
+		 * Reload for every iteration, as file_lock is
+		 * temporarily being dropped
+		 */
+		fdt = files_fdtable(files);
+	}
+out:
+	spin_unlock(&files->file_lock);
+	return 0;
+}
+
 void do_close_on_exec(struct files_struct *files)
 {
 	unsigned i;

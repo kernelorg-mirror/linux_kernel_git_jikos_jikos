@@ -1145,6 +1145,27 @@ int filp_close(struct file *filp, fl_owner_t id)
 
 EXPORT_SYMBOL(filp_close);
 
+static int close_exit(int ret)
+{
+	/* can't restart close syscall because file table entry was cleared */
+	if (unlikely(ret == -ERESTARTSYS ||
+		     ret == -ERESTARTNOINTR ||
+		     ret == -ERESTARTNOHAND ||
+		     ret == -ERESTART_RESTARTBLOCK))
+		ret = -EINTR;
+	return ret;
+
+}
+
+SYSCALL_DEFINE2(closerange, unsigned int, from, unsigned int, to)
+{
+	int ret;
+
+	ret = __close_fds(current->files, from, to);
+
+	return close_exit(ret);
+}
+EXPORT_SYMBOL(sys_closerange);
 /*
  * Careful here! We test whether the file pointer is NULL before
  * releasing the fd. This ensures that one clone task can't release
@@ -1152,16 +1173,11 @@ EXPORT_SYMBOL(filp_close);
  */
 SYSCALL_DEFINE1(close, unsigned int, fd)
 {
-	int retval = __close_fd(current->files, fd);
+	int ret;
 
-	/* can't restart close syscall because file table entry was cleared */
-	if (unlikely(retval == -ERESTARTSYS ||
-		     retval == -ERESTARTNOINTR ||
-		     retval == -ERESTARTNOHAND ||
-		     retval == -ERESTART_RESTARTBLOCK))
-		retval = -EINTR;
+	ret = __close_fd(current->files, fd);
 
-	return retval;
+	return close_exit(ret);
 }
 EXPORT_SYMBOL(sys_close);
 
