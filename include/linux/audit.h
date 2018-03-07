@@ -451,8 +451,10 @@ static inline void audit_fanotify(unsigned int response)
 		__audit_fanotify(response);
 }
 
-extern int audit_n_rules;
 extern int audit_signals;
+extern void audit_populate(struct task_struct *tsk);
+extern void audit_inc_n_rules(void);
+extern void audit_dec_n_rules(void);
 #else /* CONFIG_AUDITSYSCALL */
 static inline int audit_alloc(struct task_struct *task)
 {
@@ -572,7 +574,16 @@ static inline void audit_fanotify(unsigned int response)
 
 static inline void audit_ptrace(struct task_struct *t)
 { }
-#define audit_n_rules 0
+
+static inline void audit_populate(struct task_struct *tsk)
+{ }
+
+static inline void audit_inc_n_rules(void)
+{ }
+
+static inline void audit_dec_n_rules(void)
+{ }
+
 #define audit_signals 0
 #endif /* CONFIG_AUDITSYSCALL */
 

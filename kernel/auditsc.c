@@ -91,7 +91,7 @@
 #define MAX_PROCTITLE_AUDIT_LEN 128
 
 /* number of audit rules */
-int audit_n_rules;
+static int audit_n_rules;
 
 /* determines whether we collect data for signals sent */
 int audit_signals;
@@ -919,6 +919,36 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 	return context;
 }
 
+void audit_inc_n_rules()
+{
+	struct task_struct *p, *g;
+	unsigned long flags;
+
+	read_lock_irqsave(&tasklist_lock, flags);
+	if (!audit_n_rules++) {
+		do_each_thread(g, p) {
+			if (p->audit_context)
+				set_tsk_thread_flag(p, TIF_SYSCALL_AUDIT);
+		} while_each_thread(g, p);
+	}
+	read_unlock_irqrestore(&tasklist_lock, flags);
+}
+
+void audit_dec_n_rules()
+{
+	struct task_struct *p, *g;
+	unsigned long flags;
+
+	read_lock_irqsave(&tasklist_lock, flags);
+	audit_n_rules--;
+	if (!audit_n_rules) {
+		do_each_thread(g, p) {
+			clear_tsk_thread_flag(p, TIF_SYSCALL_AUDIT);
+		} while_each_thread(g, p);
+	}
+	read_unlock_irqrestore(&tasklist_lock, flags);
+}
+
 /**
  * audit_alloc - allocate an audit context block for a task
  * @tsk: task
@@ -938,10 +968,8 @@ int audit_alloc(struct task_struct *tsk)
 		return 0; /* Return if not auditing. */
 
 	state = audit_filter_task(tsk, &key);
-	if (state == AUDIT_DISABLED) {
-		clear_tsk_thread_flag(tsk, TIF_SYSCALL_AUDIT);
+	if (state == AUDIT_DISABLED)
 		return 0;
-	}
 
 	if (!(context = audit_alloc_context(state))) {
 		kfree(key);
@@ -951,7 +979,6 @@ int audit_alloc(struct task_struct *tsk)
 	context->filterkey = key;
 
 	tsk->audit_context  = context;
-	set_tsk_thread_flag(tsk, TIF_SYSCALL_AUDIT);
 	return 0;
 }
 
@@ -965,6 +992,14 @@ static inline void audit_free_context(struct audit_context *context)
 	kfree(context->sockaddr);
 	audit_proctitle_free(context);
 	kfree(context);
+}
+
+void audit_populate(struct task_struct *tsk)
+{
+	if (tsk->audit_context && audit_n_rules)
+		set_tsk_thread_flag(tsk, TIF_SYSCALL_AUDIT);
+	else
+		clear_tsk_thread_flag(tsk, TIF_SYSCALL_AUDIT);
 }
 
 static int audit_log_pid_context(struct audit_context *context, pid_t pid,

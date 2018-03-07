@@ -991,7 +991,7 @@ static inline int audit_add_rule(struct audit_entry *entry)
 	}
 #ifdef CONFIG_AUDITSYSCALL
 	if (!dont_count)
-		audit_n_rules++;
+		audit_inc_n_rules();
 
 	if (!audit_match_signal(entry))
 		audit_signals++;
@@ -1038,7 +1038,7 @@ int audit_del_rule(struct audit_entry *entry)
 
 #ifdef CONFIG_AUDITSYSCALL
 	if (!dont_count)
-		audit_n_rules--;
+		audit_dec_n_rules();
 
 	if (!audit_match_signal(entry))
 		audit_signals--;
