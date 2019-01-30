@@ -21,12 +21,18 @@
 #include <linux/uaccess.h>
 #include <asm/pgtable.h>
 
+struct mincore_walk_private {
+	unsigned char *vec;
+	bool can_check_pagecache;
+};
+
 static int mincore_hugetlb(pte_t *pte, unsigned long hmask, unsigned long addr,
 			unsigned long end, struct mm_walk *walk)
 {
 #ifdef CONFIG_HUGETLB_PAGE
 	unsigned char present;
-	unsigned char *vec = walk->private;
+	struct mincore_walk_private *walk_private = walk->private;
+	unsigned char *vec = walk_private->vec;
 
 	/*
 	 * Hugepages under user process are always in RAM and never
@@ -35,7 +41,7 @@ static int mincore_hugetlb(pte_t *pte, unsigned long hmask, unsigned long addr,
 	present = pte && !huge_pte_none(huge_ptep_get(pte));
 	for (; addr != end; vec++, addr += PAGE_SIZE)
 		*vec = present;
-	walk->private = vec;
+	walk_private->vec = vec;
 #else
 	BUG();
 #endif
@@ -85,7 +91,8 @@ static unsigned char mincore_page(struct address_space *mapping, pgoff_t pgoff)
 }
 
 static int __mincore_unmapped_range(unsigned long addr, unsigned long end,
-				struct vm_area_struct *vma, unsigned char *vec)
+				struct vm_area_struct *vma, unsigned char *vec,
+				bool can_check_pagecache)
 {
 	unsigned long nr = (end - addr) >> PAGE_SHIFT;
 	int i;
@@ -95,7 +102,9 @@ static int __mincore_unmapped_range(unsigned long addr, unsigned long end,
 
 		pgoff = linear_page_index(vma, addr);
 		for (i = 0; i < nr; i++, pgoff++)
-			vec[i] = mincore_page(vma->vm_file->f_mapping, pgoff);
+			vec[i] = can_check_pagecache ?
+				 mincore_page(vma->vm_file->f_mapping, pgoff)
+				 : 0;
 	} else {
 		for (i = 0; i < nr; i++)
 			vec[i] = 0;
@@ -106,8 +115,11 @@ static int __mincore_unmapped_range(unsigned long addr, unsigned long end,
 static int mincore_unmapped_range(unsigned long addr, unsigned long end,
 				   struct mm_walk *walk)
 {
-	walk->private += __mincore_unmapped_range(addr, end,
-						  walk->vma, walk->private);
+	struct mincore_walk_private *walk_private = walk->private;
+	unsigned char *vec = walk_private->vec;
+
+	walk_private->vec += __mincore_unmapped_range(addr, end, walk->vma,
+				vec, walk_private->can_check_pagecache);
 	return 0;
 }
 
@@ -117,7 +129,8 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	spinlock_t *ptl;
 	struct vm_area_struct *vma = walk->vma;
 	pte_t *ptep;
-	unsigned char *vec = walk->private;
+	struct mincore_walk_private *walk_private = walk->private;
+	unsigned char *vec = walk_private->vec;
 	int nr = (end - addr) >> PAGE_SHIFT;
 
 	ptl = pmd_trans_huge_lock(pmd, vma);
@@ -128,7 +141,8 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	}
 
 	if (pmd_trans_unstable(pmd)) {
-		__mincore_unmapped_range(addr, end, vma, vec);
+		__mincore_unmapped_range(addr, end, vma, vec,
+					walk_private->can_check_pagecache);
 		goto out;
 	}
 
@@ -138,7 +152,7 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 
 		if (pte_none(pte))
 			__mincore_unmapped_range(addr, addr + PAGE_SIZE,
-						 vma, vec);
+				 vma, vec, walk_private->can_check_pagecache);
 		else if (pte_present(pte))
 			*vec = 1;
 		else { /* pte is a swap entry */
@@ -152,8 +166,12 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 				*vec = 1;
 			} else {
 #ifdef CONFIG_SWAP
-				*vec = mincore_page(swap_address_space(entry),
+				if (walk_private->can_check_pagecache)
+					*vec = mincore_page(
+						    swap_address_space(entry),
 						    swp_offset(entry));
+				else
+					*vec = 0;
 #else
 				WARN_ON(1);
 				*vec = 1;
@@ -187,22 +205,21 @@ static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *v
 	struct vm_area_struct *vma;
 	unsigned long end;
 	int err;
+	struct mincore_walk_private walk_private = {
+		.vec = vec
+	};
 	struct mm_walk mincore_walk = {
 		.pmd_entry = mincore_pte_range,
 		.pte_hole = mincore_unmapped_range,
 		.hugetlb_entry = mincore_hugetlb,
-		.private = vec,
+		.private = &walk_private
 	};
 
 	vma = find_vma(current->mm, addr);
 	if (!vma || addr < vma->vm_start)
 		return -ENOMEM;
 	end = min(vma->vm_end, addr + (pages << PAGE_SHIFT));
-	if (!can_do_mincore(vma)) {
-		unsigned long pages = (end - addr) >> PAGE_SHIFT;
-		memset(vec, 1, pages);
-		return pages;
-	}
+	walk_private.can_check_pagecache = can_do_mincore(vma);
 	mincore_walk.mm = vma->vm_mm;
 	err = walk_page_range(addr, end, &mincore_walk);
 	if (err < 0)
