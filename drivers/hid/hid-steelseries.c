@@ -24,6 +24,16 @@ struct steelseries_srws1_data {
 };
 #endif
 
+struct arctis7_drvdata {
+        struct hid_device *hdev;
+        struct input_dev *input;
+        struct power_supply *battery;
+        struct power_supply_desc battery_desc;
+        int battery_capacity;
+        int battery_stat;
+        bool battery_in_query;
+};
+
 /* Fixed report descriptor for Steelseries SRW-S1 wheel controller
  *
  * The original descriptor hides the sensitivity and assists dials
@@ -331,12 +341,136 @@ err_free:
 	return ret;
 }
 
+static enum power_supply_property arctis7_battery_props[] = {
+        POWER_SUPPLY_PROP_STATUS,
+        POWER_SUPPLY_PROP_PRESENT,
+        POWER_SUPPLY_PROP_CAPACITY,
+        POWER_SUPPLY_PROP_SCOPE,
+        POWER_SUPPLY_PROP_MODEL_NAME,
+};
+
+static int arctis7_battery_query(struct arctis7_drvdata *drvdata)
+{
+        u8 buf[] = {0x06, 0x18};
+	unsigned char *dmabuf, *readbuf;
+	int ret;
+
+	dmabuf = kmemdup(buf, 2, GFP_KERNEL);
+
+	if (!dmabuf)
+		return -ENOMEM;
+
+	ret = hid_hw_raw_request(drvdata->hdev, buf[0], dmabuf, sizeof(buf), 
+			HID_FEATURE_REPORT,
+			HID_REQ_SET_REPORT);
+
+	readbuf = kzalloc(16, GFP_KERNEL);
+	ret = hid_hw_raw_request(drvdata->hdev, 0x06, readbuf,
+			16, HID_FEATURE_REPORT,
+			HID_REQ_GET_REPORT);
+
+	if (ret > 0) {
+		printk(KERN_DEBUG "Returned %x, TODO: interpret it and fill in drvdata->battery_capacity properly\n",
+				buf[2]);
+	}
+
+	kfree(dmabuf);
+	kfree(readbuf);
+
+        return ret;
+}
+
+static int arctis7_battery_get_property(struct power_supply *psy,
+	                             enum power_supply_property psp,
+	                             union power_supply_propval *val)
+{
+        struct arctis7_drvdata *drvdata = power_supply_get_drvdata(psy);
+        int ret = 0;
+
+        switch (psp) {
+        case POWER_SUPPLY_PROP_STATUS:
+        case POWER_SUPPLY_PROP_CAPACITY:
+		ret = arctis7_battery_query(drvdata);
+		if (ret)
+			return ret;
+                if (psp == POWER_SUPPLY_PROP_STATUS)
+                        val->intval = drvdata->battery_stat;
+                else
+                        val->intval = drvdata->battery_capacity;
+                break;
+        case POWER_SUPPLY_PROP_PRESENT:
+                val->intval = 1;
+                break;
+        case POWER_SUPPLY_PROP_SCOPE:
+                val->intval = POWER_SUPPLY_SCOPE_DEVICE;
+                break;
+        case POWER_SUPPLY_PROP_MODEL_NAME:
+                val->strval = drvdata->hdev->name;
+                break;
+        default:
+                ret = -EINVAL;
+                break;
+        }
+
+        return ret;
+}
+
+static int steelseries_arctis7_probe(struct hid_device *hdev,
+		const struct hid_device_id *id)
+{
+        int ret = 0;
+	struct arctis7_drvdata *drv_data;
+        struct power_supply_config pscfg;
+
+	drv_data = kzalloc(sizeof(*drv_data), GFP_KERNEL);
+
+	if (drv_data == NULL) {
+		hid_err(hdev, "can't alloc Arctis7 memory\n");
+		return -ENOMEM;
+	}
+
+	hid_set_drvdata(hdev, drv_data);
+	pscfg.drv_data = drv_data;
+
+        drv_data->battery_capacity = 0;
+        drv_data->battery_stat = POWER_SUPPLY_STATUS_UNKNOWN;
+        drv_data->battery_in_query = false;
+
+        drv_data->battery_desc.properties = arctis7_battery_props;
+        drv_data->battery_desc.num_properties = ARRAY_SIZE(arctis7_battery_props);
+        drv_data->battery_desc.get_property = arctis7_battery_get_property;
+        drv_data->battery_desc.type = POWER_SUPPLY_TYPE_BATTERY;
+        drv_data->battery_desc.use_for_apm = 0;
+        drv_data->battery_desc.name = devm_kasprintf(&hdev->dev, GFP_KERNEL,
+                                        "steelseries-arctis7-%s-battery",
+                                        strlen(hdev->uniq) ?
+                                        hdev->uniq : dev_name(&hdev->dev));
+        if (!drv_data->battery_desc.name)
+                return -ENOMEM;
+
+        drv_data->battery = devm_power_supply_register(&hdev->dev,
+                                &(drv_data->battery_desc), &pscfg);
+        if (IS_ERR(drv_data->battery)) {
+                ret = PTR_ERR(drv_data->battery);
+                drv_data->battery = NULL;
+                hid_err(hdev, "Unable to register battery device\n");
+                return ret;
+        }
+
+        power_supply_powers(drv_data->battery, &hdev->dev);
+
+        return ret;
+
+
+}
 
 static int steelseries_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
 	if (hdev->product == USB_DEVICE_ID_STEELSERIES_SRWS1)
 		return steelseries_srws1_probe(hdev, id);
+	if (hdev->product == USB_DEVICE_ID_STEELSERIES_ARCTIS7)
+		return steelseries_arctis7_probe(hdev, id);
 
 	return 0;
 }
@@ -390,6 +524,7 @@ static __u8 *steelseries_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 }
 
 static const struct hid_device_id steelseries_devices[] = {
+	{ HID_USB_DEVICE(USB_VENDOR_ID_STEELSERIES, USB_DEVICE_ID_STEELSERIES_ARCTIS7) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_STEELSERIES, USB_DEVICE_ID_STEELSERIES_SRWS1) },
 	{ }
 };
