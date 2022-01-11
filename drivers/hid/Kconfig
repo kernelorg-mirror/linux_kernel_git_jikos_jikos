@@ -1012,10 +1012,10 @@ config HID_STEAM
 	the wireless adaptor.
 
 config HID_STEELSERIES
-	tristate "Steelseries SRW-S1 steering wheel support"
+	tristate "Support for Steelseries devices"
 	depends on HID
 	help
-	Support for Steelseries SRW-S1 steering wheel
+	Support for certain special devices produced Steelseries
 
 config HID_SUNPLUS
 	tristate "Sunplus wireless desktop"

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- *  HID driver for Steelseries SRW-S1
+ *  HID driver for Steelseries devices
  *
  *  Copyright (c) 2013 Simon Wood
  */
@@ -221,11 +221,15 @@ static enum led_brightness steelseries_srws1_led_get_brightness(struct led_class
 
 	return value ? LED_FULL : LED_OFF;
 }
+#endif
 
 static int steelseries_srws1_probe(struct hid_device *hdev,
 		const struct hid_device_id *id)
 {
-	int ret, i;
+	int ret = 0;
+#if IS_BUILTIN(CONFIG_LEDS_CLASS) || \
+    (IS_MODULE(CONFIG_LEDS_CLASS) && IS_MODULE(CONFIG_HID_STEELSERIES))
+	int i;
 	struct led_classdev *led;
 	size_t name_sz;
 	char *name;
@@ -323,14 +327,26 @@ out:
 	return 0;
 err_free:
 	kfree(drv_data);
+#endif
 	return ret;
+}
+
+
+static int steelseries_probe(struct hid_device *hdev,
+		const struct hid_device_id *id)
+{
+	if (hdev->product == USB_DEVICE_ID_STEELSERIES_SRWS1)
+		return steelseries_srws1_probe(hdev, id);
+
+	return 0;
 }
 
 static void steelseries_srws1_remove(struct hid_device *hdev)
 {
+#if IS_BUILTIN(CONFIG_LEDS_CLASS) || \
+    (IS_MODULE(CONFIG_LEDS_CLASS) && IS_MODULE(CONFIG_HID_STEELSERIES))
 	int i;
 	struct led_classdev *led;
-
 	struct steelseries_srws1_data *drv_data = hid_get_drvdata(hdev);
 
 	if (drv_data) {
@@ -348,13 +364,22 @@ static void steelseries_srws1_remove(struct hid_device *hdev)
 
 	hid_hw_stop(hdev);
 	kfree(drv_data);
+#endif
 	return;
 }
-#endif
 
-static __u8 *steelseries_srws1_report_fixup(struct hid_device *hdev, __u8 *rdesc,
+static void steelseries_remove(struct hid_device *hdev)
+{
+        if (hdev->product == USB_DEVICE_ID_STEELSERIES_SRWS1)
+		return steelseries_srws1_remove(hdev);
+
+}
+
+static __u8 *steelseries_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		unsigned int *rsize)
 {
+	if (hdev->product != USB_DEVICE_ID_STEELSERIES_SRWS1)
+		return rdesc;
 	if (*rsize >= 115 && rdesc[11] == 0x02 && rdesc[13] == 0xc8
 			&& rdesc[29] == 0xbb && rdesc[40] == 0xc5) {
 		hid_info(hdev, "Fixing up Steelseries SRW-S1 report descriptor\n");
@@ -364,22 +389,19 @@ static __u8 *steelseries_srws1_report_fixup(struct hid_device *hdev, __u8 *rdesc
 	return rdesc;
 }
 
-static const struct hid_device_id steelseries_srws1_devices[] = {
+static const struct hid_device_id steelseries_devices[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_STEELSERIES, USB_DEVICE_ID_STEELSERIES_SRWS1) },
 	{ }
 };
-MODULE_DEVICE_TABLE(hid, steelseries_srws1_devices);
+MODULE_DEVICE_TABLE(hid, steelseries_devices);
 
-static struct hid_driver steelseries_srws1_driver = {
-	.name = "steelseries_srws1",
-	.id_table = steelseries_srws1_devices,
-#if IS_BUILTIN(CONFIG_LEDS_CLASS) || \
-    (IS_MODULE(CONFIG_LEDS_CLASS) && IS_MODULE(CONFIG_HID_STEELSERIES))
-	.probe = steelseries_srws1_probe,
-	.remove = steelseries_srws1_remove,
-#endif
-	.report_fixup = steelseries_srws1_report_fixup
+static struct hid_driver steelseries_driver = {
+	.name = "steelseries",
+	.id_table = steelseries_devices,
+	.probe = steelseries_probe,
+	.remove = steelseries_remove,
+	.report_fixup = steelseries_report_fixup
 };
 
-module_hid_driver(steelseries_srws1_driver);
+module_hid_driver(steelseries_driver);
 MODULE_LICENSE("GPL");
